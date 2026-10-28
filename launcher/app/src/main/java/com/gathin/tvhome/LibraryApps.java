@@ -99,7 +99,14 @@ final class LibraryApps {
     }
 
     static boolean visible(boolean tvApp, boolean themeHidden, boolean explicitlyAdded, boolean removedFromHome) {
-        return !removedFromHome && (explicitlyAdded || (tvApp && !themeHidden));
+        return visible(tvApp, themeHidden, explicitlyAdded, removedFromHome, false, false);
+    }
+
+    /** home_added_only: a TV app gets a Home tile only as a dock app or once it is added, so a newly installed app
+     *  waits in the App library. */
+    static boolean visible(boolean tvApp, boolean themeHidden, boolean explicitlyAdded, boolean removedFromHome,
+                           boolean addedOnly, boolean dockApp) {
+        return !removedFromHome && (explicitlyAdded || (tvApp && !themeHidden && (!addedOnly || dockApp)));
     }
 
     /** The pill after the last Home row: show_library_pill false hides it only while the top-bar button is a way in. */
@@ -113,6 +120,12 @@ final class LibraryApps {
         return excludedApps.contains(pkg);
     }
 
+    /** library_hide_home leaves the apps on Home out of the catalogue, except in app_library_selection, whose
+     *  checkmarks are how an app comes off Home again. */
+    static boolean hidesHome(boolean hideHome, boolean selection) {
+        return hideHome && !selection;
+    }
+
     /** OK on a library card opens the app (true) or changes its Home shortcut. app_library_selection's OK always
      *  changes it; otherwise an app on Home opens, and with library_ok_opens every app does. */
     static boolean okOpens(boolean selection, boolean openAll, boolean onHome) {
@@ -124,6 +137,12 @@ final class LibraryApps {
     }
 
     /** Missing shortcuts first; recent installs lead that group. The caller sorts ties by label. */
+    /** library_a_to_z keeps only the first rule, the apps on Home after the rest; labels decide everything else. */
+    static int comparePriority(boolean aToZ, boolean homeA, long installedA, boolean homeB, long installedB, long now) {
+        if (aToZ) return Boolean.compare(homeA, homeB);
+        return comparePriority(homeA, installedA, homeB, installedB, now);
+    }
+
     static int comparePriority(boolean homeA, long installedA, boolean homeB, long installedB, long now) {
         if (homeA != homeB) return homeA ? 1 : -1;
         if (homeA) return 0;

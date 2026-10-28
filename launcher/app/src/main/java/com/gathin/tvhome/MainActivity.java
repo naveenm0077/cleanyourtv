@@ -329,6 +329,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private AppLibraryDialog appLibrary;
     private boolean appLibrarySelection;
     private boolean libraryOkOpens;
+    private int libraryRows = 1;
+    private boolean libraryHideHome;
+    private boolean libraryAToZ;
     private boolean libraryFocusPending;
     private RecyclerView.OnScrollListener pendingFocusScroll;
 
@@ -427,6 +430,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         homeAppKeys = RemoteKeys.parseAppKeys(cfg.appKeys);
         appLibrarySelection = cfg.appLibrarySelection;
         libraryOkOpens = cfg.libraryOkOpens;
+        libraryRows = cfg.libraryRows;
+        libraryHideHome = cfg.libraryHideHome;
+        libraryAToZ = cfg.libraryAToZ;
         // restore_key_services: after a force stop, put back the remote's accessibility helpers that Android took
         // off the list (needs WRITE_SECURE_SETTINGS, granted by build-and-install with RESTORE_KEY_SERVICES=1).
         if (cfg.restoreKeyServices) ServiceRepair.restore(this);
@@ -1683,7 +1689,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             grid.post(() -> {
                 if (libraryFocusPending && appLibrary == null && hasWindowFocus() && !isFinishing()) focusLibrary();
             });
-        }, libraryExcludedApps);
+        }, libraryExcludedApps, libraryRows, libraryHideHome, libraryAToZ);
         openPopup = appLibrary.popup;
         appLibrary.show();
     }

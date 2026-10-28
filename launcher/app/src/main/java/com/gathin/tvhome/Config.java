@@ -151,6 +151,14 @@ final class Config {
     final boolean appLibrarySelection;
     /** OK opens every app in the library; Add to Home stays in the hold menu (library_ok_opens). */
     final boolean libraryOkOpens;
+    /** Rows in the App library, 1 to 3 (library_rows); 1 is the single row. */
+    final int libraryRows;
+    /** The App library leaves out the apps on Home (library_hide_home). */
+    final boolean libraryHideHome;
+    /** Home shows the dock apps and the added ones; new apps wait in the App library (home_added_only). */
+    final boolean homeAddedOnly;
+    /** The App library sorts A to Z only, without the recently installed apps first (library_a_to_z). */
+    final boolean libraryAToZ;
     /** Icon on a card tinted from that icon, instead of the app's banner (config.xml uniform_tiles). */
     final boolean uniformTiles;
     /** Background colour behind everything, #RRGGBB; black unless a theme says otherwise. */
@@ -279,7 +287,12 @@ final class Config {
                    boolean keyFilter, boolean dockGlass, String glowStyle, boolean wallpaperCaptions,
                    boolean handleViewInputs, boolean tileMenu, boolean dockEvenPadding, boolean dockBand, boolean cinematicDots, boolean cinematicWhiteFocus, boolean wifiStatusColor, int cinematicScrim, int cinematicArt,
                    Map<String, Set<String>> wallpaperMoods, boolean gamepadPassthrough, boolean consumeVolumeKeys, boolean powerOnHome, boolean homeLongPressHome, boolean wifiStatusWarnings, List<String> topBarApps, boolean showGreeting, boolean headerWhite, boolean clockWallpaper, int clockWallpaperDim, boolean clockGlow, String glassStyle, boolean singleRow, boolean dockBandAll, boolean lunarDate, int lunarUtcOffset, boolean dateBelowClock, boolean vpnPill, String locale, boolean powerOnHomeAlways, boolean inputsConnectedOnly,
-                   int openOnStartNetworkWait) {
+                   int openOnStartNetworkWait, int libraryRows, boolean libraryHideHome, boolean homeAddedOnly,
+                   boolean libraryAToZ) {
+        this.libraryRows = libraryRows;
+        this.libraryHideHome = libraryHideHome;
+        this.homeAddedOnly = homeAddedOnly;
+        this.libraryAToZ = libraryAToZ;
         this.handleViewInputs = handleViewInputs;
         this.tileMenu = tileMenu;
         this.inputKeycodes = inputKeycodes;
@@ -467,6 +480,10 @@ final class Config {
         boolean library = res.getBoolean(R.bool.app_library);
         boolean librarySelection = res.getBoolean(R.bool.app_library_selection);
         boolean libraryOkOpens = res.getBoolean(R.bool.library_ok_opens);
+        int libraryRows = res.getInteger(R.integer.library_rows);
+        boolean libraryHideHome = res.getBoolean(R.bool.library_hide_home);
+        boolean homeAddedOnly = res.getBoolean(R.bool.home_added_only);
+        boolean libraryAToZ = res.getBoolean(R.bool.library_a_to_z);
         boolean uniformTiles = res.getBoolean(R.bool.uniform_tiles);
         int background = 0xFF000000;
         int skyIntensity = res.getInteger(R.integer.sky_intensity);
@@ -575,6 +592,10 @@ final class Config {
             library = bool(json, "app_library", library);
             librarySelection = bool(json, "app_library_selection", librarySelection);
             libraryOkOpens = bool(json, "library_ok_opens", libraryOkOpens);
+            libraryRows = integer(json, "library_rows", libraryRows, 1, LibraryGrid.MAX_ROWS);
+            libraryHideHome = bool(json, "library_hide_home", libraryHideHome);
+            homeAddedOnly = bool(json, "home_added_only", homeAddedOnly);
+            libraryAToZ = bool(json, "library_a_to_z", libraryAToZ);
             uniformTiles = bool(json, "uniform_tiles", uniformTiles);
             background = color(json, "background_color", background);
             skyIntensity = integer(json, "sky_intensity", skyIntensity, 0, 100);
@@ -682,7 +703,8 @@ final class Config {
                 consumeVolumeKeys, powerOnHome, homeLongPressHome, wifiStatusWarnings, topBarApps, showGreeting, headerWhite, clockWallpaper,
                 Math.max(0, Math.min(90, clockWallpaperDim)), clockGlow, glassStyle, singleRow && dockRow, dockBandAll, lunar, lunarOffset,
                 dateBelowClock, vpnPill, locale, powerOnHomeAlways, inputsConnectedOnly,
-                Math.max(0, Math.min(600, openOnStartNetworkWait)));
+                Math.max(0, Math.min(600, openOnStartNetworkWait)),
+                Math.max(1, Math.min(LibraryGrid.MAX_ROWS, libraryRows)), libraryHideHome, homeAddedOnly, libraryAToZ);
     }
 
     /**

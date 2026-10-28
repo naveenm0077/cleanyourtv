@@ -31,6 +31,7 @@ import androidx.annotation.NonNull;
 import androidx.dynamicanimation.animation.FloatPropertyCompat;
 import androidx.dynamicanimation.animation.SpringAnimation;
 import androidx.dynamicanimation.animation.SpringForce;
+import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -146,8 +147,18 @@ final class AppLibraryDialog {
     /** library_excluded_apps (config.xml), never offered in the catalogue; empty by default, so existing
      *  setups are unaffected. See LibraryApps.excludedFromCatalog(). */
     private final Set<String> excludedApps;
+    /** library_rows, kept to the rows that fit the screen; 1 is the single row this dialog always had. */
+    private final int rows;
+    /** Cards per row of the library_rows grid. */
+    private final int columns;
+    /** library_hide_home: the catalogue leaves out the apps on Home. */
+    private final boolean hideHome;
+    /** library_a_to_z: recently installed apps take their place by name instead of going first. */
+    private final boolean aToZ;
+    private final int catalogHeight;
 
-    AppLibraryDialog(Activity activity, boolean animations, boolean reducedMotion, boolean selectionMode, boolean okOpens, Predicate<String> onHome, Runnable changed, Runnable dismissed, Set<String> excludedApps) {
+    AppLibraryDialog(Activity activity, boolean animations, boolean reducedMotion, boolean selectionMode, boolean okOpens, Predicate<String> onHome, Runnable changed, Runnable dismissed, Set<String> excludedApps, int rows, boolean hideHome, boolean aToZ) {
+        this.aToZ = aToZ;
         this.activity = activity;
         this.animations = animations;
         this.rtl = activity.getResources().getBoolean(R.bool.rtl_app_grid);
@@ -166,8 +177,14 @@ final class AppLibraryDialog {
         panel.setBackgroundResource(R.drawable.glass_panel);
         View decor = activity.getWindow().getDecorView();
         catalogWidth = Math.min(dp(800), Math.max(dp(200), decor.getWidth() - dp(64)));
+        // A further row is a card (170dp) and its margins; the popup keeps the screen margin it has as one row.
+        this.rows = LibraryGrid.rows(rows, LibraryGrid.fit(decor.getHeight() - dp(64), dp(280), dp(174)));
+        this.hideHome = LibraryApps.hidesHome(hideHome, selectionMode);
+        catalogHeight = dp(280) + (this.rows - 1) * dp(174);
+        // Inside the panel's and the list's side padding, each card is 132dp plus 12dp of margins.
+        columns = LibraryGrid.fit(catalogWidth - dp(44), 0, dp(144));
         int width = catalogWidth;
-        int height = dp(280);
+        int height = catalogHeight;
         popup = new PopupWindow(panel, width, height, true);
         popup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         popup.setOutsideTouchable(true);
@@ -272,20 +289,21 @@ final class AppLibraryDialog {
     }
 
     private void fill(List<ResolveInfo> catalogue) {
-        totalApps = catalogue.size();
         apps = catalogue;
         Map<String, Boolean> home = new HashMap<>();
         for (ResolveInfo app : apps) {
             String pkg = app.activityInfo.packageName;
             home.put(pkg, onHome.test(pkg));
         }
+        if (hideHome) apps.removeIf(app -> home.get(app.activityInfo.packageName));
+        totalApps = apps.size();
         catalogTime = System.currentTimeMillis();
         Collator collator = Collator.getInstance();
         apps.sort((a, b) -> {
             String pa = a.activityInfo.packageName, pb = b.activityInfo.packageName;
             if (selectionMode) return LibraryApps.compareCatalog(home.get(pa), label(a), pa,
                     home.get(pb), label(b), pb, collator);
-            int priority = LibraryApps.comparePriority(home.get(pa), installTimes.get(pa),
+            int priority = LibraryApps.comparePriority(aToZ, home.get(pa), installTimes.get(pa),
                     home.get(pb), installTimes.get(pb), catalogTime);
             if (priority != 0) return priority;
             int byLabel = collator.compare(label(a), label(b));
@@ -350,7 +368,7 @@ final class AppLibraryDialog {
 
     private void showCatalog() {
         stopHighlight();
-        resize(catalogWidth, dp(280));
+        resize(catalogWidth, catalogHeight);
         panel.removeAllViews();
         LinearLayout header = new LinearLayout(activity);
         header.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
@@ -392,9 +410,13 @@ final class AppLibraryDialog {
         RecyclerView list = new RecyclerView(activity);
         list.setLayoutDirection(rtl ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
         catalog = list;
-        list.setLayoutManager(new LinearLayoutManager(activity, RecyclerView.HORIZONTAL, false) {
-            @Override protected boolean isLayoutRTL() { return rtl; }
-        });
+        list.setLayoutManager(rows > 1
+                ? new GridLayoutManager(activity, columns, RecyclerView.VERTICAL, false) {
+                    @Override protected boolean isLayoutRTL() { return rtl; }
+                }
+                : new LinearLayoutManager(activity, RecyclerView.HORIZONTAL, false) {
+                    @Override protected boolean isLayoutRTL() { return rtl; }
+                });
         list.setItemAnimator(null);
         list.setOverScrollMode(View.OVER_SCROLL_NEVER);
         list.setClipToPadding(false);
@@ -418,6 +440,8 @@ final class AppLibraryDialog {
             @Override public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
                 scrollOffset += dx;
                 highlight.setTranslationX(highlight.getTranslationX() - dx);
+                // Only the library_rows grid scrolls down; the single row's dy is always 0.
+                highlight.setTranslationY(highlight.getTranslationY() - dy);
             }
         });
         panel.addView(shelf, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -431,6 +455,34 @@ final class AppLibraryDialog {
             if (catalog != list || !popup.isShowing()) return;
             RecyclerView.ViewHolder holder = list.findViewHolderForAdapterPosition(target);
             if (holder != null) holder.itemView.requestFocus();
+        });
+    }
+
+    /** A D-pad key as a LibraryGrid direction, mirrored for a right-to-left layout; -1 for any other key. */
+    private int direction(int key) {
+        switch (key) {
+            case KeyEvent.KEYCODE_DPAD_UP: return LibraryGrid.UP;
+            case KeyEvent.KEYCODE_DPAD_DOWN: return LibraryGrid.DOWN;
+            case KeyEvent.KEYCODE_DPAD_LEFT: return rtl ? LibraryGrid.FORWARD : LibraryGrid.BACK;
+            case KeyEvent.KEYCODE_DPAD_RIGHT: return rtl ? LibraryGrid.BACK : LibraryGrid.FORWARD;
+            default: return -1;
+        }
+    }
+
+    /** Focus the card at position, scrolling it in first when it is not laid out yet. */
+    private void focusCard(int position) {
+        RecyclerView list = catalog;
+        if (list == null) return;
+        RecyclerView.ViewHolder holder = list.findViewHolderForAdapterPosition(position);
+        if (holder != null) {
+            holder.itemView.requestFocus();
+            return;
+        }
+        list.scrollToPosition(position);
+        list.post(() -> {
+            if (catalog != list || !popup.isShowing()) return;
+            RecyclerView.ViewHolder shown = list.findViewHolderForAdapterPosition(position);
+            if (shown != null) shown.itemView.requestFocus();
         });
     }
 
@@ -463,15 +515,7 @@ final class AppLibraryDialog {
         selectedOffset = 0;
         if (add && catalog != null) {
             RecyclerView.ViewHolder holder = catalog.findViewHolderForAdapterPosition(selectedPosition);
-            if (holder != null) {
-                View card = holder.itemView;
-                RecyclerView.LayoutParams params = (RecyclerView.LayoutParams) card.getLayoutParams();
-                selectedOffset = rtl
-                        ? catalog.getWidth() - catalog.getPaddingRight()
-                            - catalog.getLayoutManager().getDecoratedRight(card) - params.rightMargin
-                        : catalog.getLayoutManager().getDecoratedLeft(card)
-                            - params.leftMargin - catalog.getPaddingLeft();
-            }
+            if (holder != null) selectedOffset = offsetOf(holder.itemView);
             // Advance through missing shortcuts instead of following the newly checked app
             // into the Home group. Preserve its screen slot when the catalogue is rebuilt.
             int next = LibraryApps.nextFocus(selectedPosition, apps.size(),
@@ -486,21 +530,24 @@ final class AppLibraryDialog {
         refresh();
     }
 
+    /** Where the card sits along the catalogue's scroll direction, for scrollToPositionWithOffset after a rebuild:
+     *  from the start edge of the single row, or from the top of the library_rows grid. */
+    private int offsetOf(View card) {
+        RecyclerView.LayoutParams params = (RecyclerView.LayoutParams) card.getLayoutParams();
+        RecyclerView.LayoutManager layout = catalog.getLayoutManager();
+        if (rows > 1) return layout.getDecoratedTop(card) - params.topMargin - catalog.getPaddingTop();
+        return rtl
+                ? catalog.getWidth() - catalog.getPaddingRight() - layout.getDecoratedRight(card) - params.rightMargin
+                : layout.getDecoratedLeft(card) - params.leftMargin - catalog.getPaddingLeft();
+    }
+
     private void updateSelectionFocus(ResolveInfo app, boolean add) {
         int position = apps.indexOf(app);
         int next = add ? -1 : LibraryApps.nextAfterRemoval(position, apps.size());
         selectedOffset = 0;
         if (!add && catalog != null) {
             RecyclerView.ViewHolder holder = catalog.findViewHolderForAdapterPosition(position);
-            if (holder != null) {
-                View card = holder.itemView;
-                RecyclerView.LayoutParams params = (RecyclerView.LayoutParams) card.getLayoutParams();
-                selectedOffset = rtl
-                        ? catalog.getWidth() - catalog.getPaddingRight()
-                            - catalog.getLayoutManager().getDecoratedRight(card) - params.rightMargin
-                        : catalog.getLayoutManager().getDecoratedLeft(card)
-                            - params.leftMargin - catalog.getPaddingLeft();
-            }
+            if (holder != null) selectedOffset = offsetOf(holder.itemView);
         }
         selectedPackage = next >= 0 ? apps.get(next).activityInfo.packageName : app.activityInfo.packageName;
     }
@@ -677,7 +724,15 @@ final class AppLibraryDialog {
                     if (index != RecyclerView.NO_POSITION) selectedPosition = index;
                 }
             });
-            holder.itemView.setOnKeyListener((v, key, event) -> {
+            if (rows > 1) holder.itemView.setOnKeyListener((v, key, event) -> {
+                int direction = direction(key);
+                if (direction < 0 || event.getAction() != KeyEvent.ACTION_DOWN) return false;
+                // Every D-pad key is answered here, so focus never takes the focus finder's guess across rows.
+                int target = LibraryGrid.move(holder.getBindingAdapterPosition(), apps.size(), columns, direction);
+                if (target >= 0) focusCard(target);
+                return true;
+            });
+            else holder.itemView.setOnKeyListener((v, key, event) -> {
                 int index = holder.getBindingAdapterPosition();
                 return event.getAction() == KeyEvent.ACTION_DOWN && (key == KeyEvent.KEYCODE_DPAD_UP
                         || key == KeyEvent.KEYCODE_DPAD_DOWN

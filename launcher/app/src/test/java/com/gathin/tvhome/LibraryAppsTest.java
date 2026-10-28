@@ -18,6 +18,62 @@ public class LibraryAppsTest {
         assertFalse(LibraryApps.showPill(false, false, true));
     }
 
+    @Test public void addedOnlyKeepsTheDockAndTheAddedAppsAndSendsTheRestToTheLibrary() {
+        // A new TV app, not on the dock and never added, waits in the library.
+        assertFalse(LibraryApps.visible(true, false, false, false, true, false));
+        // Dock apps keep their tiles, and so does an app added to Home.
+        assertTrue(LibraryApps.visible(true, false, false, false, true, true));
+        assertTrue(LibraryApps.visible(true, false, true, false, true, false));
+        assertTrue(LibraryApps.visible(false, false, true, false, true, false));
+        // Removed from Home wins, on the dock too; hidden_apps still hides a dock app that was never added.
+        assertFalse(LibraryApps.visible(true, false, true, true, true, false));
+        assertFalse(LibraryApps.visible(true, false, false, true, true, true));
+        assertFalse(LibraryApps.visible(true, true, false, false, true, true));
+        // A phone app that was never added has no tile either way.
+        assertFalse(LibraryApps.visible(false, false, false, false, true, true));
+    }
+
+    @Test public void addedOnlyOffIsTheOldRule() {
+        for (boolean tv : new boolean[]{false, true}) for (boolean hidden : new boolean[]{false, true})
+            for (boolean added : new boolean[]{false, true}) for (boolean removed : new boolean[]{false, true})
+                for (boolean dock : new boolean[]{false, true}) {
+                    assertEquals(LibraryApps.visible(tv, hidden, added, removed),
+                            LibraryApps.visible(tv, hidden, added, removed, false, dock));
+                }
+    }
+
+    @Test public void aToZKeepsHomeAppsLastAndDropsTheRecentFirstRule() {
+        long now = 30L * 24 * 60 * 60 * 1000;
+        long yesterday = now - 24L * 60 * 60 * 1000;
+        long lastYear = now - 365L * 24 * 60 * 60 * 1000;
+        // Without the switch, an app installed yesterday goes before an old one.
+        assertTrue(LibraryApps.comparePriority(false, false, yesterday, false, lastYear, now) < 0);
+        // With it, neither goes first: the label decides.
+        assertEquals(0, LibraryApps.comparePriority(true, false, yesterday, false, lastYear, now));
+        assertEquals(0, LibraryApps.comparePriority(true, false, lastYear, false, yesterday, now));
+        // Apps on Home still come after the rest.
+        assertTrue(LibraryApps.comparePriority(true, true, lastYear, false, lastYear, now) > 0);
+        assertTrue(LibraryApps.comparePriority(true, false, lastYear, true, yesterday, now) < 0);
+        assertEquals(0, LibraryApps.comparePriority(true, true, yesterday, true, lastYear, now));
+    }
+
+    @Test public void aToZOffIsTheOldOrder() {
+        long now = 30L * 24 * 60 * 60 * 1000;
+        long[] times = {0, now - 1000, now - 8L * 24 * 60 * 60 * 1000};
+        for (boolean ha : new boolean[]{false, true}) for (boolean hb : new boolean[]{false, true})
+            for (long ta : times) for (long tb : times) {
+                assertEquals(LibraryApps.comparePriority(ha, ta, hb, tb, now),
+                        LibraryApps.comparePriority(false, ha, ta, hb, tb, now));
+            }
+    }
+
+    @Test public void hideHomeLeavesHomeAppsOutButNeverInSelectionMode() {
+        assertTrue(LibraryApps.hidesHome(true, false));
+        assertFalse(LibraryApps.hidesHome(false, false));
+        assertFalse(LibraryApps.hidesHome(true, true));
+        assertFalse(LibraryApps.hidesHome(false, true));
+    }
+
     @Test public void okOpensHomeAppsAndEveryAppWithTheSwitchButNeverInSelectionMode() {
         assertTrue(LibraryApps.okOpens(false, false, true));
         assertFalse(LibraryApps.okOpens(false, false, false));
